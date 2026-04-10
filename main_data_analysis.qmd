@@ -1,0 +1,358 @@
+---
+title: "Exploratory Data Analysis"
+subtitle: ""
+date: last-modified
+sidebar: auto
+number-sections: false
+toc: true
+author:
+  - Jumbong Junior 
+
+categories: []
+tags: [""]
+title-block-banner: false
+format: 
+  html: 
+    mainfont: Times New Roman
+    fontsize: 1.1em
+execute: 
+  cache: false
+
+jupyter: python3
+
+---
+
+# Data Analysis
+
+
+```{python}
+
+import pandas as pd
+import numpy as np
+
+import importlib
+
+import importlib
+
+import src.data_analysis as data_analysis
+import src.schroders_chart4 as schroders_chart4
+import src.ols_lm as ols_lm
+import src.shiller_figure as shiller_figure
+import src.cape_crisis_chart as cape_crisis_chart
+
+importlib.reload(data_analysis)
+importlib.reload(schroders_chart4)
+importlib.reload(ols_lm)
+importlib.reload(shiller_figure)
+importlib.reload(cape_crisis_chart)
+
+```
+
+
+## Figure 1: CAPE Evolution since 1881.
+
+
+
+
+```{python}
+# Impoort data from datasets
+data_shiller_with_date_in_string = pd.read_excel(f"{data_path}/shiller_with_date_in_string_format.xlsx")
+
+# Convert date column to datetime format
+data_shiller_with_date_in_string['date'] = pd.to_datetime(data_shiller_with_date_in_string['date'], format='%Y-%m-%d')
+
+data_shiller_with_date_in_string.tail(1)
+```
+
+```{python}
+# Select columns of interest : date, cape, real_10y_stock_return
+
+data_shiller_cape = data_shiller_with_date_in_string[['date', 'cape', 'real_10y_stock_return']]
+# Delete rows with missing values
+data_shiller_cape = data_shiller_cape.dropna()
+# log cape
+data_shiller_cape['log_cape'] = np.log(data_shiller_cape['cape'])
+print(data_shiller_cape.head() )
+# last row of data_shiller_cape
+print(data_shiller_cape.tail(1))
+
+```
+
+
+```{python}
+
+
+
+# ---------------------------------------------------------------------------
+# Standalone demo
+# ---------------------------------------------------------------------------
+if __name__ == "__main__":
+    df = data_shiller_with_date_in_string.copy()
+
+    fig = cape_crisis_chart.plot_cape_crises(df)
+    # save in png
+    
+    fig.show()
+
+    
+   
+```
+
+## Figure 2: Lows in the 12-month trailling S&P P/E during recessions
+```{python}
+
+
+# ---------------------------------------------------------------------------
+# Standalone demo
+# ---------------------------------------------------------------------------
+if __name__ == "__main__":
+    df = data_shiller_with_date_in_string
+
+    fig = schroders_chart4.plot_chart4(df)
+    fig.show()
+
+    # Print recession P/E lows table
+    data = schroders_chart4.compute_recession_pe_lows(df)
+    print(f"\nAverage P/E low : {data.attrs['pe_avg']:.2f}")
+    print(f"Latest P/E      : {data.attrs['pe_latest']:.2f}")
+    print(data[["label","pe_min"]].to_string(index=False))
+```
+
+## Stationnarity study of the CAPE ratio and real 10-year stock return
+```{python}
+# stationnarity test : Augmented Dickey-Fuller test
+from statsmodels.tsa.stattools import adfuller
+
+def test_adfuller(series, series_name):
+    result = adfuller(series)
+    print(f"ADF Statistic for {series_name}: {result[0]:.4f}")
+    print(f"p-value: {result[1]:.4f}")
+    print("Critical Values:")
+    for key, value in result[4].items():
+        print(f"   {key}: {value:.4f}")
+
+test_adfuller(data_shiller_cape['cape'], 'CAPE Ratio')
+test_adfuller(data_shiller_cape['real_10y_stock_return'], 'Real 10-Year Stock Return')
+# stationnarity test for log cape
+test_adfuller(data_shiller_cape['log_cape'] , 'Log CAPE Ratio')
+```
+
+
+## Figure 3: Shiller CAPE Ratio and Actual and Forecast 10-Year Real Stock
+Returns, 1881–2014
+```{python}
+
+# ---------------------------------------------------------------------------
+# Standalone demo
+# ---------------------------------------------------------------------------
+if __name__ == "__main__":
+
+    df = data_shiller_cape.copy()
+    d_train = df[
+        (df["date"] >= "1881-01-01") & (df["date"] <= "2004-12-01")
+    ].dropna(subset=["cape", "real_10y_stock_return"]).copy()
+
+    d_test = df[df["date"] >= "2005-01-01"].dropna(subset=["cape"]).copy()
+
+    result = ols_lm.lm(
+        y          = d_train["real_10y_stock_return"],
+        X          = np.log(d_train["cape"]),
+        y_name     = "RET_t",
+        x_names    = ["log(CAPE_t)"],
+        X_forecast = np.log(d_test["cape"]),
+    )
+
+    print(result["equation"])
+
+    fig = shiller_figure.plot_shiller_figure1(
+        dates_train   = d_train["date"],
+        actual_train  = d_train["real_10y_stock_return"] * 100,
+        fitted_train  = result["fitted"],
+        dates_test    = d_test["date"],
+        actual_test   = d_test["real_10y_stock_return"] * 100,
+        forecast_test = result["forecast"],
+        cape          = pd.concat([d_train["cape"], d_test["cape"]]),
+        dates_cape    = pd.concat([d_train["date"], d_test["date"]]),
+    )
+
+    fig.show()
+    print("Saved → shiller_figure1.html")
+```
+
+
+
+
+## Figure 4 : Evolution of the CAPE ratio from 1881 to 2026.
+
+```{python}
+
+import importlib
+import src.cape_pe10_chart as cape_pe10_chart
+importlib.reload(cape_pe10_chart)
+
+
+df   = data_shiller_with_date_in_string
+fig  = cape_pe10_chart.plot_cape_pe10(df)
+fig.show()
+
+
+
+```
+
+
+
+```{python}
+
+import importlib
+from src import cape_interest_chart
+importlib.reload(cape_interest_chart)
+from src.cape_interest_chart import *
+
+df   = data_shiller_with_date_in_string
+
+fig = plot_cape_interest(df)
+fig.savefig("cape_interest.png", dpi=150, bbox_inches="tight")
+plt.close()
+print("Saved → cape_interest.png")
+```
+
+## Nvidia GRowth Stock Price and CAPE Ratio
+
+
+```{python}
+"""
+nvidia_growth_chart.py
+======================
+NVIDIA annual revenue bar chart (FY2016-FY2026) in Schroders style.
+Data sourced from official NVIDIA SEC filings & earnings releases.
+"""
+
+import plotly.graph_objects as go
+import math
+
+# ---------------------------------------------------------------------------
+# Data — NVIDIA fiscal year revenue ($B)
+# Fiscal year ends late January (e.g. FY2026 ended Jan 25, 2026)
+# ---------------------------------------------------------------------------
+fiscal_years = [
+    "FY2016", "FY2017", "FY2018", "FY2019", "FY2020",
+    "FY2021", "FY2022", "FY2023", "FY2024", "FY2025", "FY2026"
+]
+revenue_b = [5.01, 6.91, 9.71, 11.72, 10.92,
+             16.68, 26.91, 26.97, 60.92, 130.50, 215.94]
+
+def fmt(v):
+    if v >= 100:
+        return f"${v:.1f}B"
+    elif v >= 10:
+        return f"${v:.1f}B"
+    else:
+        return f"${v:.2f}B"
+
+_NAVY  = "#1a2f5e"
+_GREY  = "rgba(200,200,200,0.35)"
+
+# ---------------------------------------------------------------------------
+# Figure
+# ---------------------------------------------------------------------------
+fig = go.Figure()
+
+fig.add_trace(go.Bar(
+    x            = fiscal_years,
+    y            = revenue_b,
+    name         = "Revenue",
+    marker_color = _NAVY,
+    marker_line  = dict(width=0),
+    text         = [fmt(v) for v in revenue_b],
+    textposition = "outside",
+    textfont     = dict(size=10, color=_NAVY, family="Arial Bold"),
+    hovertemplate = "<b>%{x}</b><br>Revenue: %{text}<extra></extra>",
+    width        = 0.6,
+))
+
+# ---------------------------------------------------------------------------
+# Layout — log scale so all bars are visible
+# ---------------------------------------------------------------------------
+fig.update_layout(
+    title = dict(
+        text = (
+            "<b>NVIDIA Revenue: The growth has been extraordinary</b><br>"
+            "<sup style='color:grey'>Annual revenue FY2016–FY2026 · Source: NVIDIA SEC filings</sup>"
+        ),
+        font = dict(size=14, color=_NAVY, family="Arial"),
+        x    = 0,
+    ),
+    plot_bgcolor  = "white",
+    paper_bgcolor = "white",
+    yaxis = dict(
+        type      = "log",
+        range     = [0.6, 2.45],      # 10^0.6≈4B → 10^2.45≈280B
+        tickvals  = [5, 10, 25, 50, 100, 200],
+        ticktext  = ["$5B", "$10B", "$25B", "$50B", "$100B", "$200B"],
+        showgrid  = True,
+        gridcolor = _GREY,
+        zeroline  = False,
+        tickfont  = dict(size=11, color="#555"),
+        title     = dict(
+            text = "Annual Revenue — log scale (USD)",
+            font = dict(size=11, color="#555"),
+        ),
+    ),
+    xaxis = dict(
+        showgrid = False,
+        tickfont = dict(size=11, color="#222", family="Arial"),
+        tickangle = -35,
+    ),
+    margin     = dict(l=80, r=50, t=90, b=80),
+    width      = 750,
+    height     = 500,
+    bargap     = 0.3,
+    showlegend = False,
+)
+
+# ---------------------------------------------------------------------------
+# Annotation — ×43 growth callout
+# ---------------------------------------------------------------------------
+fig.add_annotation(
+    x         = "FY2026",
+    y         = math.log10(215.94),
+    text      = "<b>×43</b> vs FY2016",
+    showarrow = True,
+    arrowhead = 2,
+    arrowcolor = _NAVY,
+    ax = -90, ay = -36,
+    font        = dict(size=11, color=_NAVY),
+    bgcolor     = "rgba(255,255,255,0.88)",
+    bordercolor = _NAVY,
+    borderwidth = 1,
+    borderpad   = 4,
+)
+
+# AI inflection point annotation
+fig.add_annotation(
+    x         = "FY2024",
+    y         = math.log10(60.92),
+    text      = "ChatGPT era →<br>AI demand surge",
+    showarrow = True,
+    arrowhead = 2,
+    arrowcolor = "#c0392b",
+    ax = -80, ay = -50,
+    font        = dict(size=10, color="#c0392b"),
+    bgcolor     = "rgba(255,255,255,0.85)",
+    bordercolor = "#c0392b",
+    borderwidth = 1,
+    borderpad   = 3,
+)
+
+# Source note
+fig.add_annotation(
+    xref="paper", yref="paper",
+    x=0, y=-0.18,
+    text      = "Source: NVIDIA Corporation — Annual earnings releases & SEC 10-K filings (FY ends late January)",
+    showarrow = False,
+    font      = dict(size=9, color="grey"),
+    align     = "left",
+)
+
+fig.show()
+```
